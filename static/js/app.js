@@ -13,6 +13,17 @@ const resetSettings = document.getElementById('reset-settings');
 const themeToggle = document.getElementById('theme-toggle');
 const currentChatTitle = document.getElementById('current-chat-title');
 
+// File upload elements
+const fileDropOverlay = document.getElementById('file-drop-overlay');
+const fileDropZone = document.getElementById('file-drop-zone');
+const fileInput = document.getElementById('file-input');
+const filePreviewList = document.getElementById('file-preview-list');
+const fileItems = document.getElementById('file-items');
+const clearFilesBtn = document.getElementById('clear-files-btn');
+const attachBtn = document.getElementById('attach-btn');
+const fileCount = document.getElementById('file-count');
+const fileCountText = document.getElementById('file-count-text');
+
 // Settings elements
 const temperatureSlider = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperature-value');
@@ -32,6 +43,7 @@ let currentChatId = generateId();
 let conversations = {};
 let isGenerating = false;
 let currentController = null;
+let attachedFiles = [];
 
 // Default settings
 const defaultSettings = {
@@ -100,6 +112,9 @@ function setupEventListeners() {
     
     // Settings sliders
     setupSliders();
+    
+    // File upload event listeners
+    setupFileUploadListeners();
 }
 
 // Handle form submission
@@ -147,8 +162,22 @@ async function handleSubmit(e) {
         saveConversations();
     }
     
-    // Generate response
-    await generateResponse();
+    // Check if files are attached
+    if (attachedFiles.length > 0) {
+        // Update file statuses to processing
+        attachedFiles.forEach(file => {
+            updateFileStatus(file.name, 'processing');
+        });
+        
+        // Generate response with files
+        await generateResponseWithFiles(message);
+        
+        // Clear attached files after successful submission
+        clearAllFiles();
+    } else {
+        // Generate response without files
+        await generateResponse();
+    }
 }
 
 // Custom error classes for better error handling
@@ -671,6 +700,95 @@ async function generateResponse() {
         saveResponseToConversation(responseText);
         
     } catch (error) {
+        handleGenerationError(error);
+    } finally {
+        isGenerating = false;
+        currentController = null;
+    }
+}
+
+// Generate AI response with file uploads
+async function generateResponseWithFiles(prompt) {
+    try {
+        isGenerating = true;
+        showTypingIndicator();
+        
+        // Create FormData for file upload
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        formData.append('max_tokens', settings.maxTokens);
+        formData.append('temperature', settings.temperature);
+        formData.append('top_p', settings.topP);
+        formData.append('top_k', settings.topK);
+        
+        // Add system prompt if set
+        if (settings.systemPrompt && settings.systemPrompt.trim()) {
+            formData.append('system_prompt', settings.systemPrompt.trim());
+        }
+        
+        // Add all attached files
+        attachedFiles.forEach(file => {
+            formData.append('files', file);
+        });
+        
+        currentController = new AbortController();
+        
+        // Send request to file upload endpoint
+        const response = await fetch('/v1/chat/upload', {
+            method: 'POST',
+            body: formData,
+            signal: currentController.signal
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new APIError(
+                errorData.detail || `HTTP error! status: ${response.status}`,
+                response.status
+            );
+        }
+        
+        const data = await response.json();
+        
+        console.log('File upload response:', data);
+        
+        // Update file statuses to success
+        attachedFiles.forEach(file => {
+            updateFileStatus(file.name, 'success');
+        });
+        
+        // Extract response text - handle different response structures
+        let responseText;
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            responseText = data.choices[0].message.content;
+        } else if (data.response) {
+            responseText = data.response;
+        } else if (data.content) {
+            responseText = data.content;
+        } else if (typeof data === 'string') {
+            responseText = data;
+        } else {
+            throw new Error('Unexpected response format from server');
+        }
+        
+        // Remove typing indicator and add complete message
+        removeTypingIndicator();
+        addMessageToUI('assistant', responseText);
+        
+        // Save response to conversation
+        saveResponseToConversation(responseText);
+        
+        // Log file processing info if available
+        if (data.file_processing_info) {
+            console.log('File processing info:', data.file_processing_info);
+        }
+        
+    } catch (error) {
+        // Update file statuses to error
+        attachedFiles.forEach(file => {
+            updateFileStatus(file.name, 'error');
+        });
+        
         handleGenerationError(error);
     } finally {
         isGenerating = false;
@@ -1248,6 +1366,253 @@ function highlightCode(element) {
     element.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block);
     });
+}
+
+// File Upload Functions
+function setupFileUploadListeners() {
+    let dragCounter = 0;
+    
+    // Attach button click
+    attachBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    // Window-level drag events to show/hide overlay
+    window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        if (dragCounter === 1) {
+            fileDropOverlay.style.display = 'flex';
+            fileDropOverlay.classList.add('active');
+        }
+    });
+    
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) {
+            fileDropOverlay.style.display = 'none';
+            fileDropOverlay.classList.remove('active');
+            fileDropZone.classList.remove('drag-over');
+        }
+    });
+    
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+    
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        fileDropOverlay.style.display = 'none';
+        fileDropOverlay.classList.remove('active');
+        fileDropZone.classList.remove('drag-over');
+        
+        // If dropped outside the drop zone, still process files
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            const files = Array.from(e.dataTransfer.files);
+            addFiles(files);
+        }
+    });
+    
+    // Drop zone specific events
+    fileDropZone.addEventListener('dragover', handleDragOver);
+    fileDropZone.addEventListener('dragleave', handleDragLeave);
+    fileDropZone.addEventListener('drop', handleDrop);
+    
+    // Clear files button
+    clearFilesBtn.addEventListener('click', clearAllFiles);
+}
+
+function handleFileSelect(e) {
+    const files = Array.from(e.target.files);
+    addFiles(files);
+    fileInput.value = ''; // Reset input
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only add drag-over class if we're over the drop zone itself
+    if (e.target === fileDropZone || fileDropZone.contains(e.target)) {
+        fileDropZone.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only remove drag-over class if we're leaving the drop zone
+    if (e.target === fileDropZone || !fileDropZone.contains(e.relatedTarget)) {
+        fileDropZone.classList.remove('drag-over');
+    }
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Reset drag counter and hide overlay
+    fileDropZone.classList.remove('drag-over');
+    fileDropOverlay.style.display = 'none';
+    fileDropOverlay.classList.remove('active');
+    
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+}
+
+function addFiles(files) {
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    const allowedExtensions = ['.pdf', '.docx', '.pptx', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'];
+    
+    files.forEach(file => {
+        // Validate file size
+        if (file.size > maxSize) {
+            addErrorMessage(`File "${file.name}" is too large. Maximum size is 50MB.`);
+            return;
+        }
+        
+        // Validate file extension
+        const extension = '.' + file.name.split('.').pop().toLowerCase();
+        if (!allowedExtensions.includes(extension)) {
+            addErrorMessage(`File "${file.name}" has an unsupported format. Supported formats: PDF, DOCX, PPTX, XLSX, Images.`);
+            return;
+        }
+        
+        // Check if file already attached
+        if (attachedFiles.some(f => f.name === file.name && f.size === file.size)) {
+            addErrorMessage(`File "${file.name}" is already attached.`);
+            return;
+        }
+        
+        // Add file to attached files
+        attachedFiles.push(file);
+        addFilePreview(file);
+    });
+    
+    updateFileUI();
+}
+
+function addFilePreview(file) {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    fileItem.dataset.fileName = file.name;
+    
+    const extension = file.name.split('.').pop().toLowerCase();
+    const iconClass = getFileIconClass(extension);
+    const fileSize = formatFileSize(file.size);
+    
+    fileItem.innerHTML = `
+        <div class="file-icon ${iconClass}">
+            <i class="${getFileIcon(extension)}"></i>
+        </div>
+        <div class="file-info-container">
+            <div class="file-name">${escapeHTML(file.name)}</div>
+            <div class="file-size">${fileSize}</div>
+        </div>
+        <span class="file-status pending">Pending</span>
+        <button type="button" class="remove-file-btn" title="Remove file">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    // Add remove button event listener
+    const removeBtn = fileItem.querySelector('.remove-file-btn');
+    removeBtn.addEventListener('click', () => removeFile(file.name));
+    
+    fileItems.appendChild(fileItem);
+}
+
+function removeFile(fileName) {
+    attachedFiles = attachedFiles.filter(f => f.name !== fileName);
+    
+    const fileItem = fileItems.querySelector(`[data-file-name="${fileName}"]`);
+    if (fileItem) {
+        fileItem.remove();
+    }
+    
+    updateFileUI();
+}
+
+function clearAllFiles() {
+    attachedFiles = [];
+    fileItems.innerHTML = '';
+    updateFileUI();
+}
+
+function updateFileUI() {
+    if (attachedFiles.length > 0) {
+        filePreviewList.style.display = 'block';
+        fileCount.style.display = 'flex';
+        fileCountText.textContent = `${attachedFiles.length} file${attachedFiles.length > 1 ? 's' : ''}`;
+        attachBtn.classList.add('active');
+    } else {
+        filePreviewList.style.display = 'none';
+        fileCount.style.display = 'none';
+        attachBtn.classList.remove('active');
+    }
+}
+
+function getFileIconClass(extension) {
+    const iconMap = {
+        'pdf': 'pdf',
+        'docx': 'docx',
+        'doc': 'docx',
+        'pptx': 'pptx',
+        'ppt': 'pptx',
+        'xlsx': 'xlsx',
+        'xls': 'xlsx',
+        'jpg': 'image',
+        'jpeg': 'image',
+        'png': 'image',
+        'gif': 'image',
+        'bmp': 'image',
+        'tiff': 'image'
+    };
+    
+    return iconMap[extension] || 'default';
+}
+
+function getFileIcon(extension) {
+    const iconMap = {
+        'pdf': 'fas fa-file-pdf',
+        'docx': 'fas fa-file-word',
+        'doc': 'fas fa-file-word',
+        'pptx': 'fas fa-file-powerpoint',
+        'ppt': 'fas fa-file-powerpoint',
+        'xlsx': 'fas fa-file-excel',
+        'xls': 'fas fa-file-excel',
+        'jpg': 'fas fa-file-image',
+        'jpeg': 'fas fa-file-image',
+        'png': 'fas fa-file-image',
+        'gif': 'fas fa-file-image',
+        'bmp': 'fas fa-file-image',
+        'tiff': 'fas fa-file-image'
+    };
+    
+    return iconMap[extension] || 'fas fa-file';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+function updateFileStatus(fileName, status) {
+    const fileItem = fileItems.querySelector(`[data-file-name="${fileName}"]`);
+    if (fileItem) {
+        const statusElement = fileItem.querySelector('.file-status');
+        statusElement.className = `file-status ${status}`;
+        statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
 }
 
 // Handle mobile sidebar

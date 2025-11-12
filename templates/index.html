@@ -56,20 +56,51 @@
             </div>
             
             <div class="input-container">
+                <!-- File Drop Overlay (hidden by default, shown on drag) -->
+                <div class="file-drop-overlay" id="file-drop-overlay" style="display: none;">
+                    <div class="file-drop-zone" id="file-drop-zone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Drop files here to attach</p>
+                        <p class="file-info">Supported: PDF, DOCX, PPTX, XLSX, Images (Max 50MB)</p>
+                    </div>
+                </div>
+                
+                <!-- Hidden file input -->
+                <input type="file" id="file-input" multiple accept=".pdf,.docx,.pptx,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.tiff" hidden>
+                
+                <!-- File Preview List -->
+                <div class="file-preview-list" id="file-preview-list" style="display: none;">
+                    <div class="file-preview-header">
+                        <h4>Attached Files</h4>
+                        <button type="button" class="clear-files-btn" id="clear-files-btn">
+                            <i class="fas fa-times"></i> Clear All
+                        </button>
+                    </div>
+                    <div class="file-items" id="file-items">
+                        <!-- File preview items will be added here -->
+                    </div>
+                </div>
+                
                 <form id="chat-form">
                     <div class="textarea-wrapper">
-                        <textarea 
-                            id="user-input" 
-                            placeholder="Type your message here..." 
+                        <button type="button" id="attach-btn" class="attach-btn" title="Attach files">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <textarea
+                            id="user-input"
+                            placeholder="Type your message here..."
                             rows="1"
                             autofocus
                         ></textarea>
-                        <button type="submit" id="send-btn">
+                        <button type="submit" id="send-btn" style="margin-right: 10px;">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
                     <div class="input-footer">
                         <span class="input-info">Press Enter to send, Shift+Enter for new line</span>
+                        <span class="file-count" id="file-count" style="display: none;">
+                            <i class="fas fa-paperclip"></i> <span id="file-count-text">0 files</span>
+                        </span>
                     </div>
                 </form>
             </div>

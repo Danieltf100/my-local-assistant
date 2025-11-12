@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,6 +20,9 @@ import re
 import asyncio
 import inspect
 from dotenv import load_dotenv
+
+# Import file processing utilities
+from utils import FileManager, DoclingProcessor, CacheManager, CleanupScheduler
 
 # Load environment variables from .env file
 load_dotenv()
@@ -520,11 +523,18 @@ tokenizer = None
 device = "cpu"
 function_registry = FunctionRegistry()
 
+# Global variables for file processing
+file_manager = None
+docling_processor = None
+cache_manager = None
+cleanup_scheduler = None
+
 # Lifespan context manager for startup and shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Load model and tokenizer
     global model, tokenizer, device, function_registry
+    global file_manager, docling_processor, cache_manager, cleanup_scheduler
     
     logger.info("Loading model and tokenizer...")
     start_time = time.time()
@@ -541,6 +551,28 @@ async def lifespan(app: FastAPI):
         model.eval()
         
         logger.info(f"Model loaded successfully in {time.time() - start_time:.2f} seconds")
+        
+        # Initialize file processing components
+        logger.info("Initializing file processing system...")
+        
+        file_manager = FileManager(
+            upload_dir=os.getenv("UPLOAD_DIR", "./uploads"),
+            max_size_mb=int(os.getenv("MAX_FILE_SIZE_MB", "50")),
+            allowed_extensions=os.getenv("ALLOWED_EXTENSIONS", "pdf,docx,pptx,xlsx,png,jpg,jpeg,gif,txt,md").split(",")
+        )
+        
+        docling_processor = DoclingProcessor()
+        
+        cache_manager = CacheManager(
+            cache_dir=os.getenv("CACHE_DIR", "./cache"),
+            ttl_hours=int(os.getenv("CACHE_TTL_HOURS", "24"))
+        )
+        
+        # Start cleanup scheduler
+        cleanup_scheduler = CleanupScheduler(file_manager, cache_manager)
+        cleanup_scheduler.start()
+        
+        logger.info("File processing system initialized")
         
         # Register functions
         logger.info("Registering functions...")
@@ -587,13 +619,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"Registered {len(function_registry.functions)} functions")
         
     except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
+        logger.error(f"Error during startup: {str(e)}")
         raise e
     
     yield
     
-    # Shutdown: Cleanup (if needed)
+    # Shutdown: Cleanup
     logger.info("Shutting down application...")
+    if cleanup_scheduler:
+        cleanup_scheduler.shutdown()
 
 # Create FastAPI app with lifespan
 app = FastAPI(
@@ -707,6 +741,78 @@ def format_chat_prompt(prompt: str) -> list:
         list: A list containing the formatted chat message
     """
     return [{"role": "user", "content": prompt}]
+
+# Helper functions for document processing
+def format_document_context(processed_files: List[Dict[str, Any]]) -> str:
+    """Format processed documents as context for LLM"""
+    if not processed_files:
+        return ""
+    
+    context_parts = ["=== ATTACHED DOCUMENTS ===\n"]
+    
+    for i, file_data in enumerate(processed_files, 1):
+        metadata = file_data.get("metadata", {})
+        markdown = file_data.get("markdown", "")
+        
+        context_parts.append(f"\n--- Document {i}: {metadata.get('filename', 'Unknown')} ---")
+        context_parts.append(f"Format: {metadata.get('format', 'Unknown')}")
+        
+        if metadata.get('page_count'):
+            context_parts.append(f"Pages: {metadata['page_count']}")
+        
+        context_parts.append(f"\nContent:\n{markdown}\n")
+        context_parts.append("--- End of Document ---\n")
+    
+    context_parts.append("\n=== END OF DOCUMENTS ===\n")
+    
+    return "\n".join(context_parts)
+
+def prepare_prompt_with_context(
+    user_prompt: str,
+    processed_files: List[Dict[str, Any]],
+    system_prompt: Optional[str] = None
+) -> str:
+    """Build enhanced prompt with document context"""
+    
+    # Format document context
+    doc_context = format_document_context(processed_files)
+    
+    # Build instruction for the model
+    instruction = """You have been provided with document(s) as reference material.
+Please analyze the documents and answer the user's question based on the information provided.
+If the answer cannot be found in the documents, please state that clearly."""
+    
+    # Combine all parts
+    if doc_context:
+        enhanced_prompt = f"""{instruction}
+
+{doc_context}
+
+User Question: {user_prompt}
+
+Please provide a detailed answer based on the documents above."""
+    else:
+        enhanced_prompt = user_prompt
+    
+    return enhanced_prompt
+
+async def process_document_with_cache(file_path: str) -> Dict[str, Any]:
+    """Process document with caching"""
+    # Check cache first
+    cached = cache_manager.get(file_path)
+    if cached:
+        logger.info(f"Cache hit for {file_path}")
+        return cached
+    
+    # Process document
+    logger.info(f"Cache miss for {file_path}, processing...")
+    result = await docling_processor.process_document(file_path)
+    
+    # Cache result
+    if result.get("success"):
+        cache_manager.set(file_path, result)
+    
+    return result
 
 # Text generation endpoint
 @app.post("/generate", response_model=GenerationResponse)
@@ -1050,6 +1156,113 @@ async def execute_function(request: dict):
     except Exception as e:
         logger.error(f"Error executing function: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# File upload endpoint with document processing
+@app.post("/v1/chat/upload")
+async def chat_with_files(
+    prompt: str = Form(...),
+    files: List[UploadFile] = File(None),
+    max_tokens: int = Form(100),
+    temperature: float = Form(0.7),
+    top_p: float = Form(0.9),
+    system_prompt: Optional[str] = Form(None)
+):
+    """
+    Chat endpoint that accepts text prompt and optional file attachments.
+    Processes files with Docling and includes content as context.
+    """
+    ensure_model_loaded()
+    
+    try:
+        start_time = time.time()
+        processed_files = []
+        
+        # Process files if provided
+        if files and len(files) > 0:
+            logger.info(f"Processing {len(files)} uploaded files")
+            
+            for file in files:
+                # Read file content
+                content = await file.read()
+                
+                # Validate file
+                is_valid, error_msg = file_manager.validate_file(file.filename, len(content))
+                if not is_valid:
+                    raise HTTPException(status_code=400, detail=error_msg)
+                
+                # Save file
+                file_path = await file_manager.save_file(content, file.filename)
+                
+                # Process with Docling (with caching)
+                processed_content = await process_document_with_cache(file_path)
+                
+                if processed_content.get("success"):
+                    processed_files.append(processed_content)
+                else:
+                    logger.warning(f"Failed to process {file.filename}: {processed_content.get('error')}")
+        
+        # Prepare enhanced prompt with document context
+        if processed_files:
+            enhanced_prompt = prepare_prompt_with_context(prompt, processed_files, system_prompt)
+        else:
+            enhanced_prompt = prompt
+        
+        # Format messages for chat completion
+        messages = [{"role": "user", "content": enhanced_prompt}]
+        
+        # Add custom system prompt if provided and no files
+        if system_prompt and not processed_files:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        
+        # Format chat
+        chat = []
+        for msg in messages:
+            chat.append({"role": msg["role"], "content": msg["content"]})
+        
+        # Apply chat template
+        formatted_prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+        
+        # Tokenize
+        input_tokens = tokenizer(formatted_prompt, return_tensors="pt").to(device)
+        
+        # Generate
+        output = model.generate(
+            **input_tokens,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=temperature > 0.0
+        )
+        
+        # Decode
+        input_length = input_tokens["input_ids"].shape[1]
+        generated_text = tokenizer.batch_decode(output[:, input_length:], skip_special_tokens=True)[0]
+        
+        execution_time = time.time() - start_time
+        
+        # Format response
+        response = {
+            "response": generated_text,
+            "files_processed": [
+                {
+                    "filename": f.get("metadata", {}).get("filename", "Unknown"),
+                    "pages": f.get("metadata", {}).get("page_count"),
+                    "status": "success" if f.get("success") else "failed"
+                }
+                for f in processed_files
+            ],
+            "execution_time": execution_time
+        }
+        
+        logger.info(f"Chat with files completed in {execution_time:.2f}s, processed {len(processed_files)} files")
+        
+        return JSONResponse(content=response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in chat_with_files: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 # Streaming endpoint for real-time responses
 @app.post("/v1/stream")
