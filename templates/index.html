@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Granite4Nano-1B Chat</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
+</head>
+<body class="light-mode">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Granite Chat</h1>
+                <button id="new-chat-btn" class="new-chat-btn">
+                    <i class="fas fa-plus"></i> New Chat
+                </button>
+            </div>
+            
+            <div class="chat-history">
+                <h2>Chat History</h2>
+                <ul id="history-list">
+                    <!-- Chat history will be populated here -->
+                </ul>
+            </div>
+            
+            <div class="sidebar-footer">
+                <button id="settings-btn" class="settings-btn">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+                <button id="theme-toggle" class="theme-toggle">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Chat Area -->
+        <main class="chat-container">
+            <div class="chat-header">
+                <h2 id="current-chat-title">New Conversation</h2>
+            </div>
+            
+            <div class="messages-container" id="messages-container">
+                <div class="welcome-message">
+                    <h2>Welcome to Granite Chat</h2>
+                    <p>This is a chat interface for the IBM Granite 4.0 1B model.</p>
+                    <p>Ask me anything to get started!</p>
+                </div>
+                <!-- Messages will be added here -->
+            </div>
+            
+            <div class="input-container">
+                <form id="chat-form">
+                    <div class="textarea-wrapper">
+                        <textarea 
+                            id="user-input" 
+                            placeholder="Type your message here..." 
+                            rows="1"
+                            autofocus
+                        ></textarea>
+                        <button type="submit" id="send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="input-footer">
+                        <span class="input-info">Press Enter to send, Shift+Enter for new line</span>
+                    </div>
+                </form>
+            </div>
+        </main>
+        
+        <!-- Settings Modal -->
+        <div class="modal" id="settings-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                    <button class="close-btn" id="close-settings">×</button>
+                </div>
+                <div class="modal-body">
+                    <h3>Model Parameters</h3>
+                    <div class="settings-group">
+                        <div class="setting">
+                            <label for="temperature">Temperature</label>
+                            <div class="slider-container">
+                                <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                                <span class="slider-value" id="temperature-value">0.7</span>
+                            </div>
+                            <p class="setting-description">Higher values make output more random, lower values more deterministic</p>
+                        </div>
+                        
+                        <div class="setting">
+                            <label for="max-tokens">Max Tokens</label>
+                            <div class="slider-container">
+                                <input type="range" id="max-tokens" min="50" max="32000" step="50" value="100">
+                                <span class="slider-value" id="max-tokens-value">100</span>
+                            </div>
+                            <p class="setting-description">Maximum number of tokens to generate</p>
+                        </div>
+                        
+                        <div class="setting">
+                            <label for="top-p">Top P</label>
+                            <div class="slider-container">
+                                <input type="range" id="top-p" min="0" max="1" step="0.05" value="0.9">
+                                <span class="slider-value" id="top-p-value">0.9</span>
+                            </div>
+                            <p class="setting-description">Nucleus sampling parameter</p>
+                        </div>
+                        
+                        <div class="setting">
+                            <label for="top-k">Top K</label>
+                            <div class="slider-container">
+                                <input type="range" id="top-k" min="0" max="100" step="5" value="50">
+                                <span class="slider-value" id="top-k-value">50</span>
+                            </div>
+                            <p class="setting-description">Top-k sampling parameter</p>
+                        </div>
+                    </div>
+                    
+                    <h3>System Prompt</h3>
+                    <div class="settings-group">
+                        <div class="setting">
+                            <label for="system-prompt">Custom System Prompt</label>
+                            <textarea
+                                id="system-prompt"
+                                class="system-prompt-textarea"
+                                rows="6"
+                                placeholder="Enter a custom system prompt to define the assistant's behavior and personality. Leave empty to use the default prompt with function calling capabilities."
+                            ></textarea>
+                            <p class="setting-description">Define how the assistant should behave. Note: Custom prompts will override function calling instructions unless you include them.</p>
+                            <button id="reset-system-prompt" class="secondary-btn small-btn">Reset to Default</button>
+                        </div>
+                    </div>
+                    
+                    <h3>Interface Settings</h3>
+                    <div class="settings-group">
+                        <div class="setting checkbox-setting">
+                            <input type="checkbox" id="streaming" checked>
+                            <label for="streaming">Enable streaming responses</label>
+                        </div>
+                        
+                        <div class="setting checkbox-setting">
+                            <input type="checkbox" id="save-history" checked>
+                            <label for="save-history">Save chat history</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="reset-settings" class="secondary-btn">Reset to Defaults</button>
+                    <button id="save-settings" class="primary-btn">Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
