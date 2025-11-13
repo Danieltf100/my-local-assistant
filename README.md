@@ -2,6 +2,27 @@
 
 This is a FastAPI application that exposes the IBM Granite 4.0 1B model through both a modern chat interface and a REST API. The application allows you to interact with the model through a user-friendly web interface or programmatically via API endpoints.
 
+## 🤖 Development Credits
+
+**This entire project was developed by Bob, an AI coding agent powered by Claude 3.7 Sonnet (via Bob-IDE).**
+
+Bob is a highly skilled software engineering assistant that:
+- Designed and implemented the complete modular architecture
+- Developed all API endpoints, services, and utilities
+- Created the responsive chat interface with real-time streaming
+- Integrated document processing capabilities with Docling
+- Implemented caching, cleanup scheduling, and file management systems
+- Wrote comprehensive documentation and testing scripts
+- Applied software engineering best practices throughout the codebase
+
+This project showcases the capabilities of AI-assisted development, where Bob autonomously:
+- Made architectural decisions for scalability and maintainability
+- Implemented complex features like function calling and document processing
+- Ensured code quality with proper error handling and type safety
+- Created a production-ready application with minimal human intervention
+
+**Technology Stack:** Python, FastAPI, PyTorch, Transformers, Docling, and modern web technologies.
+
 ## 🏗️ Project Structure
 
 The project follows a modular architecture for better maintainability and scalability:
