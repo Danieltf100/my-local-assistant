@@ -3,6 +3,7 @@ const messagesContainer = document.getElementById('messages-container');
 const userInput = document.getElementById('user-input');
 const chatForm = document.getElementById('chat-form');
 const sendBtn = document.getElementById('send-btn');
+const stopBtn = document.getElementById('stop-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
 const historyList = document.getElementById('history-list');
 const settingsBtn = document.getElementById('settings-btn');
@@ -87,6 +88,9 @@ function setupEventListeners() {
     
     // New chat button
     newChatBtn.addEventListener('click', startNewChat);
+    
+    // Stop button
+    stopBtn.addEventListener('click', stopGeneration);
     
     // Settings modal
     settingsBtn.addEventListener('click', () => settingsModal.classList.add('active'));
@@ -683,11 +687,33 @@ function handleGenerationError(error) {
     addErrorMessage(errorMessage);
 }
 
+// Stop generation
+function stopGeneration() {
+    if (currentController) {
+        currentController.abort();
+        currentController = null;
+    }
+    isGenerating = false;
+    removeTypingIndicator();
+    
+    // Toggle buttons
+    sendBtn.style.display = '';
+    sendBtn.disabled = false;
+    stopBtn.style.display = 'none';
+    
+    console.log('Generation stopped by user');
+}
+
 // Generate AI response
 async function generateResponse() {
     try {
         isGenerating = true;
         showTypingIndicator();
+        
+        // Toggle buttons
+        sendBtn.disabled = true;
+        sendBtn.style.display = 'none';
+        stopBtn.style.display = '';
         
         const requestData = prepareRequestData();
         currentController = new AbortController();
@@ -704,6 +730,11 @@ async function generateResponse() {
     } finally {
         isGenerating = false;
         currentController = null;
+        
+        // Toggle buttons back
+        sendBtn.style.display = '';
+        sendBtn.disabled = false;
+        stopBtn.style.display = 'none';
     }
 }
 
@@ -712,6 +743,11 @@ async function generateResponseWithFiles(prompt) {
     try {
         isGenerating = true;
         showTypingIndicator();
+        
+        // Toggle buttons
+        sendBtn.disabled = true;
+        sendBtn.style.display = 'none';
+        stopBtn.style.display = '';
         
         // Create FormData for file upload
         const formData = new FormData();
@@ -793,6 +829,11 @@ async function generateResponseWithFiles(prompt) {
     } finally {
         isGenerating = false;
         currentController = null;
+        
+        // Toggle buttons back
+        sendBtn.style.display = '';
+        sendBtn.disabled = false;
+        stopBtn.style.display = 'none';
     }
 }
 

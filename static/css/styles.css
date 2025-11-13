@@ -442,17 +442,41 @@ a {
     box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.2);
 }
 
-#send-btn {
+#send-btn, #stop-btn {
     position: absolute;
     right: 12px;
     color: var(--accent-color);
     font-size: 1.2rem;
-    transition: transform var(--transition-fast), color var(--transition-fast);
+    transition: transform var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
 }
 
 #send-btn:hover {
     color: var(--accent-hover);
     transform: scale(1.1);
+}
+
+#stop-btn {
+    color: var(--error-color);
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+#stop-btn:hover {
+    color: #d63940;
+    background-color: rgba(239, 65, 70, 0.1);
+    transform: scale(1.1);
+}
+
+#send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#send-btn:disabled:hover {
+    transform: none;
 }
 
 .input-footer {

@@ -2,6 +2,70 @@
 
 This is a FastAPI application that exposes the IBM Granite 4.0 1B model through both a modern chat interface and a REST API. The application allows you to interact with the model through a user-friendly web interface or programmatically via API endpoints.
 
+## 🏗️ Project Structure
+
+The project follows a modular architecture for better maintainability and scalability:
+
+```
+my-local-assistant/
+├── app.py                      # Main FastAPI application entry point
+├── requirements.txt            # Python dependencies
+├── .env.example               # Environment variables template
+├── README.md                  # This file
+│
+├── api/                       # API layer
+│   ├── dependencies.py        # Shared dependencies and utilities
+│   └── routes/                # API route modules (to be implemented)
+│
+├── core/                      # Core application logic
+│   ├── config.py             # Configuration management
+│   ├── model_manager.py      # Model loading and management
+│   ├── lifespan.py           # Application startup/shutdown
+│   └── helpers.py            # Utility classes (Timer, etc.)
+│
+├── services/                  # Business logic services
+│   ├── function_service.py   # Function registry and execution
+│   ├── weather_service.py    # Weather API integration
+│   ├── search_service.py     # Web search functionality
+│   ├── document_service.py   # Document processing logic
+│   └── generation_service.py # Text generation and streaming
+│
+├── schemas/                   # Pydantic models
+│   ├── generation.py         # Generation request/response models
+│   ├── chat.py              # Chat completion models
+│   └── functions.py         # Function calling models
+│
+├── constants/                 # Application constants
+│   └── cities.py            # City coordinates for geocoding
+│
+├── utils/                     # Utility modules
+│   ├── file_manager.py       # File upload management
+│   ├── docling_processor.py  # Document processing
+│   ├── cache_manager.py      # Caching system
+│   └── cleanup_scheduler.py  # Background cleanup tasks
+│
+├── static/                    # Static assets
+│   ├── css/                  # Stylesheets
+│   ├── js/                   # JavaScript files
+│   └── img/                  # Images
+│
+├── templates/                 # HTML templates
+│   └── index.html           # Chat interface
+│
+├── uploads/                   # Temporary file uploads
+├── cache/                     # Document processing cache
+└── logs/                      # Application logs
+```
+
+### Architecture Benefits
+
+- **Modular Design**: Each module has a single, well-defined responsibility
+- **Separation of Concerns**: API routes, business logic, and data models are separated
+- **Testability**: Services can be unit tested independently
+- **Maintainability**: Easy to locate and modify specific functionality
+- **Scalability**: Simple to add new features without affecting existing code
+- **Type Safety**: Pydantic schemas provide runtime validation and IDE support
+
 ## ⚠️ Important Performance Notes
 
 ### Document Processing Performance
@@ -123,19 +187,53 @@ Edit `.env` to customize:
 
 ### Starting the Server
 
+The application uses a modular architecture. The main entry point is `app.py`, which imports and configures all modules.
+
 Run the following command to start the server:
 
 ```bash
 python app.py
 ```
 
-This will start the server on `http://0.0.0.0:8000`.
+This will:
+1. Load environment variables from `.env` (if present)
+2. Initialize the model and tokenizer
+3. Set up file processing components
+4. Register available functions (weather, search)
+5. Start the FastAPI server on `http://0.0.0.0:8000`
 
 Alternatively, you can use Uvicorn directly:
 
 ```bash
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+**Note**: The `--reload` flag enables auto-reload during development. Remove it for production deployments.
+
+### Configuration
+
+The application can be configured through environment variables in `.env`:
+
+```bash
+# Model Configuration
+MODEL_PATH=ibm-granite/granite-4.0-1b
+
+# Server Configuration
+HOST=0.0.0.0
+PORT=8000
+
+# File Processing
+MAX_FILE_SIZE_MB=50
+UPLOAD_DIR=./uploads
+CACHE_DIR=./cache
+CACHE_TTL_HOURS=24
+ALLOWED_EXTENSIONS=pdf,docx,pptx,xlsx,png,jpg,jpeg,gif,txt,md
+
+# External APIs
+METEOBLUE_API_KEY=your_api_key_here
+```
+
+All settings have sensible defaults and will work without a `.env` file.
 
 ### Accessing the Chat Interface
 
