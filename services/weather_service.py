@@ -7,8 +7,9 @@ with geocoding support via OpenStreetMap Nominatim.
 
 import logging
 import httpx
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from constants import CITY_COORDINATES
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ async def geocode_location(location: str) -> Dict[str, Any]:
     return {"lat": -23.5505, "lon": -46.6333, "name": location}
 
 
-async def get_weather(location: str, units: str = "celsius", api_key: str = "demo") -> Dict[str, Any]:
+async def get_weather(location: str, units: str = "celsius", api_key: Optional[str] = None) -> Dict[str, Any]:
     """
     Get current weather for a location using Meteoblue Forecast API.
     
@@ -74,11 +75,15 @@ async def get_weather(location: str, units: str = "celsius", api_key: str = "dem
     Returns:
         Weather information including temperature, condition, humidity, wind speed, etc.
     """
+    # Use API key from settings if not provided
+    if api_key is None:
+        api_key = settings.METEOBLUE_API_KEY
+    
     unit_symbol = "°C" if units == "celsius" else "°F"
     
     try:
-        # For demo purposes, if no API key, return mock data
-        if api_key == "demo":
+        # For demo purposes, if no API key or demo key, return mock data
+        if not api_key or api_key == "demo":
             logger.info(f"Using mock weather data for {location}")
             temp_c = 25
             temp_f = 77
